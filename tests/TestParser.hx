@@ -2,6 +2,12 @@ package ;
 
 import tjson.TJSON;
 
+#if (haxe_ver >= 4.2)
+import Std.isOfType;
+#else
+import Std.is as isOfType;
+#end
+
 import sys.io.File;
 
 class ChildClass{
@@ -65,7 +71,7 @@ class TestParser extends haxe.unit.TestCase{
 		assertEquals('value',res.key);
 
 		var res = TJSON.parse("[]");
-		assertTrue(Std.is(res, Array));
+		assertTrue(isOfType(res, Array));
 		assertEquals(0, res.length);
 
 		var res = TJSON.parse("123");
@@ -183,15 +189,15 @@ class TestParser extends haxe.unit.TestCase{
 		//test simple style
 		var jsonString = TJSON.encode(origObj);
 		var generatedObj = TJSON.parse(jsonString);
-		assertEquals('a',Reflect.field(generatedObj,'1'));
+		assertEquals('a', Reflect.field(generatedObj, '1'));
 
-		assertEquals('anotherValue',Reflect.field(Reflect.field(generatedObj,'anArray')[0],'anotherKey'));
+		assertEquals('anotherValue', Reflect.field(Reflect.field(generatedObj, 'anArray')[0], 'anotherKey'));
 
 		//test fancy style
-		var jsonString = TJSON.encode(origObj,'fancy');
+		var jsonString = TJSON.encode(origObj, FANCY);
 		var generatedObj = TJSON.parse(jsonString);
-		assertEquals('a',Reflect.field(generatedObj,'1'));
-		assertEquals('anotherValue',Reflect.field(Reflect.field(generatedObj,'anArray')[0],'anotherKey'));
+		assertEquals('a', Reflect.field(generatedObj, '1'));
+		assertEquals('anotherValue', Reflect.field(Reflect.field(generatedObj, 'anArray')[0], 'anotherKey'));
 
 	}
 
@@ -214,31 +220,31 @@ class TestParser extends haxe.unit.TestCase{
     	var intStr = "{v:500}";
     	var o = TJSON.parse(intStr);
     	assertEquals(500, o.v);
-    	assertTrue(Std.is(o.v, Int));
+    	assertTrue(isOfType(o.v, Int));
 
     	var intStr = "{v:2147483647}";
     	var o = TJSON.parse(intStr);
     	assertEquals(2147483647, o.v);
-    	assertTrue(Std.is(o.v, Int));
+    	assertTrue(isOfType(o.v, Int));
 
     	var intStr = "{v:-2147483648}";
     	var o = TJSON.parse(intStr);
     	assertEquals(-2147483648, o.v);
-    	assertTrue(Std.is(o.v, Int));
+    	assertTrue(isOfType(o.v, Int));
 
     	var intStr = "{v:5000000000}";
     	var o = TJSON.parse(intStr);
     	assertEquals(5000000000.0, o.v);
-    	assertTrue(Std.is(o.v, Float));
+    	assertTrue(isOfType(o.v, Float));
 
     	var intStr = "{v:-5000000000}";
     	var o = TJSON.parse(intStr);
     	assertEquals(-5000000000.0, o.v);
-    	assertTrue(Std.is(o.v, Float));
+    	assertTrue(isOfType(o.v, Float));
     }
 
 	public function testChars(){
-		var data = File.getContent('tests/chars.json');
+		var data = File.getContent('./data/chars.json');
 		var d = TJSON.parse(data);
 		//just making sure it parses without errors
 		assertEquals(1,1);
@@ -295,7 +301,7 @@ class TestParser extends haxe.unit.TestCase{
 
         //test Date object serialization/unserialization
         assertTrue(ob2.aDate != null);
-        assertEquals(Std.is(ob2.aDate, Date),true);
+        assertEquals(isOfType(ob2.aDate, Date),true);
         assertEquals(ob2.timestamp, obj.timestamp);
         assertEquals(ob2.aDate.getTime(),obj.timestamp);
 

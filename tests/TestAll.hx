@@ -1,10 +1,12 @@
+package;
 
-package ;
 import TestParser;
-class TestAll {
-    function new(){
 
-    }
+class TestAll {
+	function new() {
+
+	}
+
     static function main(){
         var r = new haxe.unit.TestRunner();
         r.add(new TestParser());

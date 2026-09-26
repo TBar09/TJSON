@@ -1,0 +1,10 @@
+--library tjson
+--library hx3compat
+
+--define useTJSONParser
+--define useTJSONPrinter
+
+#-neko TJSONTest.n
+-neko TJSONTest.n
+
+-main TestAll

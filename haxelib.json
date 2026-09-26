@@ -1,0 +1,21 @@
+{
+	"name": "tjson",
+	"description": "Tolerant JSON parser and encoder. Unserializes and serializes JSON data, but without all the strictness of standard JSON parsers. Supports multi and single-line comments, keys without quotes, and single quotes.",
+	"releasenote": "Bug fixes, added support for TJ_unserialize callback",
+	"version": "1.4.0",
+	"contributors": ["martamius"],
+	"classPath": "src/",
+	"license": "BSD",
+	"tags": [
+		"json",
+		"tjson",
+		"tolerant",
+		"javascript",
+		"parser",
+		"js",
+		"cross"
+	],
+	"url": "https://github.com/martamius/TJSON",
+	"dependencies": {},
+	"license": "BSD"
+}
