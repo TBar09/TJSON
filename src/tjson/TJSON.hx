@@ -94,7 +94,7 @@ class TJSONParser {
 				case s: convertStringToType(s);
 			}
 		} catch(e:String) {
-			throw fileName + " on line " + currentLine + ": " + e;
+			throw (fileName != null ? fileName : "FILE.json") + " on line " + currentLine + ": " + e;
 		}
 	}
 
@@ -124,7 +124,7 @@ class TJSONParser {
 
 			var seperator:String = getNextSymbol();
 			if(seperator != ":") {
-				throw "Expected ':' but got '" + seperator + "' instead.";
+				throw "Expected ':' but got '" + seperator + "' instead";
 			}
 
 			var v:String = getNextSymbol();
@@ -208,11 +208,11 @@ class TJSONParser {
 
 			return symbol; //just a normal string so return it
 		}
-		else if(looksLikeFloat(symbol)) // Float
+		else if(canBeFloat(symbol)) // Float
 		{
 			return Std.parseFloat(symbol);
 		}
-		else if(looksLikeInt(symbol)) // Int
+		else if(canBeInt(symbol)) // Int
 		{
 			return Std.parseInt(symbol);
 		}
@@ -228,8 +228,7 @@ class TJSONParser {
 		return symbol;
 	}
 
-
-	private inline function looksLikeFloat(s:String):Bool {
+	private inline function canBeFloat(s:String):Bool {
 		return floatRegex.match(s) || (
 			intRegex.match(s) && {
 				var intStr = intRegex.matched(0);
@@ -241,12 +240,13 @@ class TJSONParser {
 		);
 	}
 
-	private inline function looksLikeInt(s:String):Bool {
+	private inline function canBeInt(s:String):Bool {
 		return intRegex.match(s);
 	}
 
 	private function getNextSymbol():String {
 		lastSymbolQuoted = false;
+
 		var c:String = '';
 		var inQuote:Bool = false;
 		var quoteType:String = "";
@@ -330,7 +330,6 @@ class TJSONParser {
 						continue;
 					}
 
-
 					throw "Invalid escape sequence '\\" + c + "'";
 				} else {
 					if(c == "\\") {
@@ -364,7 +363,6 @@ class TJSONParser {
 					continue;
 				}
 			}
-
 
 
 			if (inSymbol) {
@@ -424,25 +422,24 @@ class TJSONEncoder {
 
 	public function doEncode(obj:Dynamic, ?style:EncodingType = SIMPLE) {
 		if(!Reflect.isObject(obj)) {
-			throw("Provided object is not an object.");
+			throw "Provided variable is not an object";
 		}
 
-		var st:EncodeStyle;
-		switch(style) {
+		var st:EncodeStyle = switch(style) {
 			case CUSTOM(encSty): //Custom printing
-				st = encSty;
+				encSty;
 			case FANCY: //Fancy printing
-				st = new FancyStyle();
+				new FancyStyle();
 			default: //Simple printing
-				st = new SimpleStyle();
+				new SimpleStyle();
 		}
 
-		var buffer = new StringBuf();
-		if(isOfType(obj, Array) || isOfType(obj, List))
+		var buffer:StringBuf = new StringBuf();
+		if(isOfType(obj, Array) || isOfType(obj, List)) // Arrays or Lists
 		{
 			buffer.add(encodeIterable(obj, st, 0));
 		}
-		else if(isOfType(obj, haxe.ds.StringMap))
+		else if(isOfType(obj, haxe.ds.StringMap)) // String Maps
 		{
 			buffer.add(encodeMap(obj, st, 0));
 		}
@@ -451,22 +448,22 @@ class TJSONEncoder {
 			cacheEncode(obj);
 			buffer.add(encodeObject(obj, st, 0));
 		}
+
 		return buffer.toString();
 	}
 
 	/* Encoding different types */
 
 	private function encodeObject(obj:Dynamic, style:EncodeStyle, depth:Int):String {
-		var buffer = new StringBuf();
+		var buffer:StringBuf = new StringBuf();
 		buffer.add(style.beginObject(depth));
 
-		var fieldCount = 0;
+		var fieldCount:Int = 0;
 		var fields:Array<String>;
-		var dontEncodeFields:Array<String> = null;
+		var blacklistedFields:Array<String> = null;
 
-		var cls = Type.getClass(obj);
-		if (cls != null) fields = Type.getInstanceFields(cls);
-		else fields = Reflect.fields(obj);
+		var cls:Class<Dynamic> = Type.getClass(obj);
+		fields = (cls != null ? Type.getInstanceFields(cls) : Reflect.fields(obj));
 
 		/*
 		preserve class name when serializing class objects
@@ -480,14 +477,15 @@ class TJSONEncoder {
 				buffer.add('"' + TJSON.HAXE_CLASS_REFERENCE_PREFIX + '"' + style.keyValueSeperator(depth));
 				buffer.add(encodeValue(Type.getClassName(c), style, depth));
 
-				if( #if flash9 try obj.TJ_noEncode != null catch( e : Dynamic ) false #elseif (cs || java) Reflect.hasField(obj, "TJ_noEncode") #else obj.TJ_noEncode != null #end ) {
-					dontEncodeFields = obj.TJ_noEncode();
+				if(#if(flash9) try obj.TJ_noEncode != null catch(e:Dynamic) false
+					#elseif(cs || java) Reflect.hasField(obj, "TJ_noEncode") #else (obj.TJ_noEncode != null) #end) {
+					blacklistedFields = obj.TJ_noEncode();
 				}
 			default:
 		}
 
 		for (field in fields) {
-			if(dontEncodeFields != null && dontEncodeFields.indexOf(field) >= 0) continue;
+			if(blacklistedFields != null && blacklistedFields.indexOf(field) >= 0) continue;
 
 			var value:Dynamic = Reflect.field(obj, field);
 			var vStr:String = encodeValue(value, style, depth);
@@ -498,7 +496,6 @@ class TJSONEncoder {
 				buffer.add('"' + field + '"' + style.keyValueSeperator(depth) + vStr);
 			}
 		}
-
 
 		buffer.add(style.endObject(depth));
 		return buffer.toString();
@@ -541,7 +538,7 @@ class TJSONEncoder {
 	}
 
 
-	private function cacheEncode(value:Dynamic):String{
+	private function cacheEncode(value:Dynamic):String {
 		if(!uCache) return null;
 
 		for(c in 0...cache.length){
@@ -576,7 +573,7 @@ class TJSONEncoder {
 		}
 		else if(isOfType(value, String)) //Strings
 		{
-			return('"' + Std.string(value).replace("\\","\\\\").replace("\n","\\n").replace("\r","\\r").replace('"','\\"') + '"');
+			return ('"' + Std.string(value).replace("\\","\\\\").replace("\n","\\n").replace("\r","\\r").replace('"','\\"') + '"');
 		}
 		else if(isOfType(value, Bool)) //Bools
 		{
@@ -658,7 +655,7 @@ class FancyStyle implements EncodeStyle {
 		return "\n" + charTimesN(depth) + "]";
 	}
 	public function firstEntry(depth:Int):String {
-		return charTimesN(depth + 1) + ' ';
+		return charTimesN(depth + 1);
 	}
 	public function entrySeperator(depth:Int):String {
 		return ",\n" + charTimesN(depth + 1);
