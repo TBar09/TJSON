@@ -1,5 +1,11 @@
 package tjson;
 
+#if (haxe_ver >= 4.2)
+import Std.isOfType;
+#else
+import Std.is as isOfType;
+#end
+
 using StringTools;
 class TJSON {    
 	public static inline var OBJECT_REFERENCE_PREFIX:String = "@~obRef#";
@@ -432,11 +438,11 @@ class TJSONEncoder {
 		}
 
 		var buffer = new StringBuf();
-		if(Std.isOfType(obj, Array) || Std.isOfType(obj, List))
+		if(isOfType(obj, Array) || isOfType(obj, List))
 		{
 			buffer.add(encodeIterable(obj, st, 0));
 		}
-		else if(Std.isOfType(obj, haxe.ds.StringMap))
+		else if(isOfType(obj, haxe.ds.StringMap))
 		{
 			buffer.add(encodeMap(obj, st, 0));
 		}
@@ -550,29 +556,29 @@ class TJSONEncoder {
 
 
 	private function encodeValue(value:Dynamic, style:EncodeStyle, depth:Int):String {
-		if(Std.isOfType(value, Int) || Std.isOfType(value, Float)) //Numbers
+		if(isOfType(value, Int) || isOfType(value, Float)) //Numbers
 		{
 			return Std.string(value);
 		}
-		else if(Std.isOfType(value, Array) || Std.isOfType(value, List)) //Arrays / Lists
+		else if(isOfType(value, Array) || isOfType(value, List)) //Arrays / Lists
 		{
 			var v:Array<Dynamic> = value;
 			return encodeIterable(v, style, depth + 1);
 		}
-		else if(Std.isOfType(value, List)) //Lists
+		else if(isOfType(value, List)) //Lists
 		{
 			var v:List<Dynamic> = value;
 			return encodeIterable(v, style, depth + 1);
 		}
-		else if(Std.isOfType(value, haxe.ds.StringMap)) //String maps
+		else if(isOfType(value, haxe.ds.StringMap)) //String maps
 		{
 			return encodeMap(value, style, depth + 1);
 		}
-		else if(Std.isOfType(value, String)) //Strings
+		else if(isOfType(value, String)) //Strings
 		{
 			return('"' + Std.string(value).replace("\\","\\\\").replace("\n","\\n").replace("\r","\\r").replace('"','\\"') + '"');
 		}
-		else if(Std.isOfType(value, Bool)) //Bools
+		else if(isOfType(value, Bool)) //Bools
 		{
 			return (value == true ? "true" : "false");
 		}
