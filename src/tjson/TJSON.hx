@@ -52,25 +52,31 @@ enum EncodingType {
 
 class TJSONParser {
 	var pos:Int;
-	var json:String;
-	var lastSymbolQuoted:Bool; //true if the last symbol was in quotes.
-    var fileName:String;
 	var currentLine:Int;
-	var cache:Array<Dynamic>;
+
+	var json:String;
+	var fileName:String;
+
+	var lastSymbolQuoted:Bool; //true if the last symbol was in quotes.
 	var floatRegex:EReg;
 	var intRegex:EReg;
+
+	var cache:Array<Dynamic>;
 	var strProcessor:String->Dynamic;
 
 	public function new(vjson:String, ?vfileName:String = "JSON Data", ?stringProcessor:String->Dynamic = null) {
-		json = vjson;
-		fileName = vfileName;
-		currentLine = 1;
-        lastSymbolQuoted = false;
-		pos = 0;
-		floatRegex = ~/^-?[0-9]*\.[0-9]+$/;
-		intRegex = ~/^-?[0-9]+$/;
-		strProcessor = (stringProcessor == null ? defaultStringProcessor : stringProcessor);
-		cache = new Array();
+		this.json = vjson;
+		this.fileName = vfileName;
+		this.currentLine = 1;
+		this.pos = 0;
+
+		this.lastSymbolQuoted = false;
+
+		this.floatRegex = ~/^-?[0-9]*\.[0-9]+$/;
+		this.intRegex = ~/^-?[0-9]+$/;
+
+		this.strProcessor = (stringProcessor == null ? defaultStringProcessor : stringProcessor);
+		this.cache = new Array();
 	}
 
 	public function doParse():Dynamic {
@@ -79,7 +85,7 @@ class TJSONParser {
 			return switch (getNextSymbol()) {
 				case '{': doObject();
 				case '[': doArray();
-				case s: convertSymbolToProperType(s);
+				case s: convertStringToType(s);
 			}
 		} catch(e:String) {
 			throw fileName + " on line " + currentLine + ": " + e;
@@ -87,49 +93,62 @@ class TJSONParser {
 	}
 
 	private function doObject():Dynamic {
-		var o:Dynamic = { };
-		var val:Dynamic ='';
-		var key:String;
-		var isClassOb:Bool = false;
+		var obj:Dynamic = {};
 
-		cache.push(o);
+		var val:Dynamic = '';
+		var key:String;
+
+		var isClassOb:Bool = false;
+		cache.push(obj);
+
 		while(pos < json.length) {
 			key = getNextSymbol();
+
 			if(key == "," && !lastSymbolQuoted) continue;
 			if(key == "}" && !lastSymbolQuoted) {
 				//end of the object. Run the TJ_unserialize function if there is one
-				if( isClassOb && #if flash9 try o.TJ_unserialize != null catch( e : Dynamic ) false #elseif (cs || java) Reflect.hasField(o, "TJ_unserialize") #else o.TJ_unserialize != null #end  ) {
-					o.TJ_unserialize();
+				if(isClassOb &&
+					#if(flash9) try obj.TJ_unserialize != null catch( e : Dynamic ) false
+					#elseif(cs || java) Reflect.hasField(obj, "TJ_unserialize") #else (obj.TJ_unserialize != null) #end) {
+					obj.TJ_unserialize();
 				}
-				return o;
+
+				return obj;
 			}
 
-			var seperator = getNextSymbol();
+			var seperator:String = getNextSymbol();
 			if(seperator != ":") {
-				throw("Expected ':' but got '" + seperator + "' instead.");
+				throw "Expected ':' but got '" + seperator + "' instead.";
 			}
 
-			var v = getNextSymbol();
-
+			var v:String = getNextSymbol();
 			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX) {
-				var cls = Type.resolveClass(v);
+				var cls:Class<Dynamic> = Type.resolveClass(v);
 				if(cls == null) throw "Invalid class name - " + v;
-				o = Type.createEmptyInstance(cls);
+
+				obj = Type.createEmptyInstance(cls);
+
 				cache.pop();
-				cache.push(o);
+				cache.push(obj);
 				isClassOb = true;
+
 				continue;
 			}
 
-
-			if(v == "{" && !lastSymbolQuoted) {
+			if(v == "{" && !lastSymbolQuoted) // Another object
+			{
 				val = doObject();
-			} else if(v == "[" && !lastSymbolQuoted) {
-				val = doArray();
-			} else {
-				val = convertSymbolToProperType(v);
 			}
-			Reflect.setField(o, key, val);
+			else if(v == "[" && !lastSymbolQuoted) // Array
+			{
+				val = doArray();
+			}
+			else // Anything else
+			{
+				val = convertStringToType(v);
+			}
+
+			Reflect.setField(obj, key, val);
 		}
 
 		throw "Unexpected end of file. Expected '}'";
@@ -159,7 +178,7 @@ class TJSONParser {
 			}
 			else
 			{
-				val = convertSymbolToProperType(val);
+				val = convertStringToType(val);
 			}
 
 			a.push(val);
@@ -168,8 +187,12 @@ class TJSONParser {
 		throw "Unexpected end of file. Expected ']'";
 	}
 
-	private function convertSymbolToProperType(symbol:String):Dynamic {
-		if(lastSymbolQuoted) {
+	/**
+	 * Converts a string into a type that is supported by JSON.
+	 */
+	private function convertStringToType(symbol:String):Dynamic {
+		if(lastSymbolQuoted) // Strings
+		{
 			//value was in quotes, so it's a string.
 			//look for reference prefix, return cached reference if it is
 			if(StringTools.startsWith(symbol, TJSON.OBJECT_REFERENCE_PREFIX)){
@@ -179,23 +202,19 @@ class TJSONParser {
 
 			return symbol; //just a normal string so return it
 		}
-		else if(looksLikeFloat(symbol))
+		else if(looksLikeFloat(symbol)) // Float
 		{
 			return Std.parseFloat(symbol);
 		}
-		else if(looksLikeInt(symbol))
+		else if(looksLikeInt(symbol)) // Int
 		{
 			return Std.parseInt(symbol);
 		}
-		else if(symbol.toLowerCase() == "true")
+		else if(symbol == "true" || symbol == "false") // Bool
 		{
-			return true;
+			return (symbol == "true");
 		}
-		else if(symbol.toLowerCase() == "false")
-		{
-			return false;
-		}
-		else if(symbol.toLowerCase() == "null")
+		else if(symbol == "null") // Null
 		{
 			return null;
 		}
@@ -220,7 +239,7 @@ class TJSONParser {
 		return intRegex.match(s);
 	}
 
-	private function getNextSymbol() {
+	private function getNextSymbol():String {
 		lastSymbolQuoted = false;
 		var c:String = '';
 		var inQuote:Bool = false;
@@ -286,17 +305,18 @@ class TJSONParser {
 								throw "Unfinished UTF8 character";
 							}
 
-							var nc = json.charCodeAt(pos++);
+							var nc:Int = json.charCodeAt(pos++);
 							hexValue = hexValue << 4;
 
-							if (nc >= 48 && nc <= 57) // 0..9
+							if (nc >= '0'.code && nc <= '9'.code) { /* 0..9 */
 								hexValue += nc - 48;
-							else if (nc >= 65 && nc <= 70) // A..F
+							} else if (nc >= 'A'.code && nc <= 'F'.code) { /* A..F */
 								hexValue += 10 + nc - 65;
-							else if (nc >= 97 && nc <= 102) // a..f
+							} else if (nc >= 'a'.code && nc <= 'f'.code) {/* a..f */
 								hexValue += 10 + nc - 95;
-							else
+							} else {
 								throw "Not a hex digit";
+							}
 						}
 
 						symbol += String.fromCharCode(hexValue);
@@ -635,7 +655,7 @@ class FancyStyle implements EncodeStyle {
 		return charTimesN(depth + 1) + ' ';
 	}
 	public function entrySeperator(depth:Int):String {
-		return "\n" + charTimesN(depth + 1) + ",";
+		return ",\n" + charTimesN(depth + 1);
 	}
 	public function keyValueSeperator(depth:Int):String {
 		return ": ";
