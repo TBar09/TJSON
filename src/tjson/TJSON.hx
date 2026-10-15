@@ -12,38 +12,42 @@ class TJSON {
 	public static inline var HAXE_CLASS_REFERENCE_PREFIX:String = "_hxcls";
 
 	/**
-	 * Parses a JSON string into a Haxe dynamic object or array.
-	 * @param 	json				The JSON string to parse
-	 * @param	fileName			The file name to which the JSON code belongs. Used for generating nice error messages
-	 * @param	stringProcessor		A custom function to process the json string. Currently unused by the parser.
+	 * Parses a JSON string into a dynamic Haxe object, array, or raw value.
 	 *
-	 * @return A Haxe object or array.
+	 * @param 	str					The JSON string to parse.
+	 * @param	fileName			The file name to which the JSON code belongs.
+	 *								Used for generating nice error messages
+	 * @param	stringProcessor		A custom function to process the json string.
+	 *								Currently unused by the parser.
+	 *
+	 * @return	A Haxe object, array, or raw value.
 	 */
-	public static function parse(json:String, ?fileName:String, ?stringProcessor:String->Dynamic):Dynamic {
+	public static function parse(str:String, ?fileName:String, ?stringProcessor:String->Dynamic):Dynamic {
 		#if useTJSONParser
-		var t = new TJSONParser(json, fileName, stringProcessor);
+		var t = new TJSONParser(str, fileName, stringProcessor);
 		return t.doParse();
 		#else
-		return haxe.Json.parse(json);
+		return haxe.Json.parse(str);
 		#end
 	}
 
 	/**
-	 * Serializes a dynamic object or an array into a JSON string.
+	 * Serializes a dynamic object or array into a JSON-syntax string.
+	 *
 	 * @param 	obj				The Haxe object to be serialized.
-	 * @param	style			The printing style to use. Can be SIMPLE (No indentation),
-	 *							FANCY (Indentation for nesting), or a CUSTOM style from a class
-	 *							implementing the EncodeStyle interface.
+	 * @param	style			The printing style to use. Can be `SIMPLE` (No indentation),
+	 *							`FANCY` (Indentation for nesting), or a `CUSTOM` style from a
+	 *							class implementing the `EncodeStyle` interface.
 	 * @param	useCache		Whether to cache objects.
 	 *
-	 * @return A Haxe json string.
+	 * @return	A JSON-syntax Haxe string.
 	 */
 	public static function encode(obj:Dynamic, ?style:EncodingType, ?useCache:Bool):String {
 		#if useTJSONPrinter
 		var t = new TJSONEncoder(useCache);
 		return t.doEncode(obj, style);
 		#else
-		return haxe.Json.stringify(obj, null, (style == FANCY ? "\t" : ""));
+		return haxe.Json.stringify(obj, null, (style == FANCY ? "\t" : null));
 		#end
 	}
 }
@@ -70,7 +74,7 @@ class TJSONParser {
 	var cache:Array<Dynamic>;
 	var strProcessor:String->Dynamic;
 
-	public function new(vjson:String, ?vfileName:String = "JSON Data", ?stringProcessor:String->Dynamic = null) {
+	public function new(vjson:String, ?vfileName:String = "TJSON.json", ?stringProcessor:String->Dynamic = null) {
 		this.json = vjson;
 		this.fileName = vfileName;
 		this.currentLine = 1;
@@ -87,8 +91,8 @@ class TJSONParser {
 
 	public function doParse():Dynamic {
 		try {
-			//determine if objector array
-			return switch (getNextSymbol()) {
+			// Determine if object, array, or raw type.
+			return switch(getNextSymbol()) {
 				case '{': doObject();
 				case '[': doArray();
 				case s: convertStringToType(s);
@@ -112,7 +116,7 @@ class TJSONParser {
 
 			if(key == "," && !lastSymbolQuoted) continue;
 			if(key == "}" && !lastSymbolQuoted) {
-				//end of the object. Run the TJ_unserialize function if there is one
+				// End of the object. Run the TJ_unserialize function if there is one
 				if(isClassOb &&
 					#if(flash9) try obj.TJ_unserialize != null catch( e : Dynamic ) false
 					#elseif(cs || java) Reflect.hasField(obj, "TJ_unserialize") #else (obj.TJ_unserialize != null) #end) {
@@ -128,7 +132,8 @@ class TJSONParser {
 			}
 
 			var v:String = getNextSymbol();
-			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX) {
+			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX) // The key has the Haxe class reference prefix, so it's a class
+			{
 				var cls:Class<Dynamic> = Type.resolveClass(v);
 				if(cls == null) throw "Invalid class name - " + v;
 
@@ -141,15 +146,15 @@ class TJSONParser {
 				continue;
 			}
 
-			if(v == "{" && !lastSymbolQuoted) // Another object
+			if(v == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside object
 			{
 				val = doObject();
 			}
-			else if(v == "[" && !lastSymbolQuoted) // Array
+			else if(v == "[" && !lastSymbolQuoted) // An opening bracket, start array inside object
 			{
 				val = doArray();
 			}
-			else // Anything else
+			else // We convert the value into it's proper type
 			{
 				val = convertStringToType(v);
 			}
@@ -161,33 +166,34 @@ class TJSONParser {
 	}
 
 	private function doArray():Dynamic {
-		var a:Array<Dynamic> = new Array<Dynamic>();
+		var arr:Array<Dynamic> = new Array<Dynamic>();
 		var val:Dynamic;
 
 		while(pos < json.length) {
 			val = getNextSymbol();
-			if(val == ',' && !lastSymbolQuoted)
+
+			if(val == ',' && !lastSymbolQuoted) // A comma, stop last value and start new one
 			{
 				continue;
 			}
-			else if(val == ']' && !lastSymbolQuoted)
+			else if(val == ']' && !lastSymbolQuoted) // A closing bracket, stop array reading and return it
 			{
-				return a;
+				return arr;
 			}
-			else if(val == "{" && !lastSymbolQuoted)
+			else if(val == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside array
 			{
 				val = doObject();
 			}
-			else if(val == "[" && !lastSymbolQuoted)
+			else if(val == "[" && !lastSymbolQuoted) // An opening bracket, start array inside array
 			{
 				val = doArray();
 			}
-			else
+			else // Anything else, we convert the value into it's proper type
 			{
 				val = convertStringToType(val);
 			}
 
-			a.push(val);
+			arr.push(val);
 		}
 
 		throw "Unexpected end of file. Expected ']'";
@@ -197,16 +203,16 @@ class TJSONParser {
 	 * Converts a string into a type that is supported by JSON.
 	 */
 	private function convertStringToType(symbol:String):Dynamic {
-		if(lastSymbolQuoted) // Strings
+		if(lastSymbolQuoted) // String
 		{
-			//value was in quotes, so it's a string.
-			//look for reference prefix, return cached reference if it is
+			/* The value was in quotes, so it's a string.
+			 * We look for the reference prefix, and return the cached reference if it is. */
 			if(StringTools.startsWith(symbol, TJSON.OBJECT_REFERENCE_PREFIX)){
 				var idx:Int = Std.parseInt(symbol.substr(TJSON.OBJECT_REFERENCE_PREFIX.length));
 				return cache[idx];
 			}
 
-			return symbol; //just a normal string so return it
+			return symbol; //It's just a normal string, so return it.
 		}
 		else if(canBeFloat(symbol)) // Float
 		{
@@ -228,18 +234,20 @@ class TJSONParser {
 		return symbol;
 	}
 
+	/**
+	 * Returns whether the given string can be a Float.
+	 */
 	private inline function canBeFloat(s:String):Bool {
 		return floatRegex.match(s) || (
-			intRegex.match(s) && {
-				var intStr = intRegex.matched(0);
-				if (intStr.charCodeAt(0) == "-".code)
-					intStr > "-2147483648";
-				else
-					intStr > "2147483647";
-			}
-		);
+			canBeInt(s) && {
+			var intStr:String = intRegex.matched(0);
+			intStr > (intStr.charCodeAt(0) == '-'.code ? "-2147483648" : "2147483647");
+		});
 	}
 
+	/**
+	 * Returns whether the given string can be a Integer.
+	 */
 	private inline function canBeInt(s:String):Bool {
 		return intRegex.match(s);
 	}
@@ -279,7 +287,7 @@ class TJSONParser {
 			if(inQuote) {
 				if(inEscape) {
 					inEscape = false;
-					if(c == "'" || c == '"') { // " or '
+					if(c == "'" || c == '"') {
 						symbol += c;
 						continue;
 					}
@@ -344,19 +352,17 @@ class TJSONParser {
 					continue;
 				}
 			}
-			else if(c == "/") //handle comments
+			else if(c == "/") // Handle both types of comments. These can even interrupt a symbol
 			{
 				var c2 = json.charAt(pos);
-				//handle single line comments.
-				//These can even interrupt a symbol.
+				// Handle single line comments
 				if(c2 == "/"){
 					inLineComment = true;
 					pos++;
 					continue;
 				}
 
-				//handle block comments.
-				//These can even interrupt a symbol.
+				// Handle multi-line/block comments
 				else if(c2 == "*") {
 					inBlockComment = true;
 					pos++;
@@ -366,10 +372,10 @@ class TJSONParser {
 
 
 			if (inSymbol) {
-				if(c == ' ' || c == "\n" || c == "\r" || c == "\t" || c == ',' || c == ":" || c == "}" || c == "]") { //end of symbol, return it
+				if(c == ' ' || c == "\n" || c == "\r" || c == "\t" || c == ',' || c == ":" || c == "}" || c == "]") { // End of symbol, return it
 					pos--;
 					return symbol;
-				}else{
+				} else {
 					symbol += c;
 					continue;
 				}
@@ -393,8 +399,7 @@ class TJSONParser {
 					continue;
 				}
 			}
-
-		} // end of while. We have reached EOF if we are here.
+		} // End of while loop. We have reached EOF if we are here.
 
 		if(inQuote) {
 			throw "Unexpected end of data. Expected ( " + quoteType + " )";
@@ -403,7 +408,7 @@ class TJSONParser {
 		return symbol;
 	}
 
-
+	// CURRENTLY UNUSED
 	private inline function defaultStringProcessor(str:String):Dynamic {
 		return str;
 	}
@@ -417,7 +422,7 @@ class TJSONEncoder {
 
 	public function new(useCache:Bool = true) {
 		uCache = useCache;
-		if(uCache) cache = new Array();
+		if(uCache) cache = new Array<Dynamic>();
 	}
 
 	public function doEncode(obj:Dynamic, ?style:EncodingType = SIMPLE) {
@@ -426,20 +431,17 @@ class TJSONEncoder {
 		}
 
 		var st:EncodeStyle = switch(style) {
-			case CUSTOM(encSty): //Custom printing
-				encSty;
-			case FANCY: //Fancy printing
-				new FancyStyle();
-			default: //Simple printing
-				new SimpleStyle();
+			case CUSTOM(encSty): encSty; // Custom printing
+			case FANCY: new FancyStyle(); // Fancy printing
+			default: new SimpleStyle(); // Simple printing
 		}
 
 		var buffer:StringBuf = new StringBuf();
-		if(isOfType(obj, Array) || isOfType(obj, List)) // Arrays or Lists
+		if(isOfType(obj, Array) || isOfType(obj, List)) // Array or List
 		{
 			buffer.add(encodeIterable(obj, st, 0));
 		}
-		else if(isOfType(obj, haxe.ds.StringMap)) // String Maps
+		else if(isOfType(obj, haxe.ds.StringMap)) // String Map
 		{
 			buffer.add(encodeMap(obj, st, 0));
 		}
@@ -465,10 +467,8 @@ class TJSONEncoder {
 		var cls:Class<Dynamic> = Type.getClass(obj);
 		fields = (cls != null ? Type.getInstanceFields(cls) : Reflect.fields(obj));
 
-		/*
-		preserve class name when serializing class objects
-		is there a way to get c outside of a switch?
-		*/
+		/* Preserve class name when serializing class objects.
+		Is there a way to get `c` outside of a switch? */
 		switch(Type.typeof(obj)) {
 			case TClass(c):
 				if(fieldCount++ > 0) buffer.add(style.entrySeperator(depth));
@@ -493,6 +493,7 @@ class TJSONEncoder {
 			if(vStr != null) {
 				if(fieldCount++ > 0) buffer.add(style.entrySeperator(depth));
 				else buffer.add(style.firstEntry(depth));
+
 				buffer.add('"' + field + '"' + style.keyValueSeperator(depth) + vStr);
 			}
 		}
