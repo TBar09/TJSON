@@ -9,7 +9,9 @@ import Std.is as isOfType;
 using StringTools;
 class TJSON {    
 	public static inline var OBJECT_REFERENCE_PREFIX:String = "@~obRef#";
+
 	public static inline var HAXE_CLASS_REFERENCE_PREFIX:String = "_hxcls";
+	public static inline var HAXE_ENUM_REFERENCE_PREFIX:String = "_hxenm";
 
 	/**
 	 * Parses a JSON string into a dynamic Haxe object, array, or raw value.
@@ -109,6 +111,9 @@ class TJSONParser {
 		var key:String;
 
 		var isClassOb:Bool = false;
+		var isEnumOb:Bool = false;
+		var enmInfo:Map<String, Dynamic> = null;
+
 		cache.push(obj);
 
 		while(pos < json.length) {
@@ -116,11 +121,18 @@ class TJSONParser {
 
 			if(key == "," && !lastSymbolQuoted) continue;
 			if(key == "}" && !lastSymbolQuoted) {
-				// End of the object. Run the TJ_unserialize function if there is one
-				if(isClassOb &&
-					#if(flash9) try obj.TJ_unserialize != null catch( e : Dynamic ) false
-					#elseif(cs || java) Reflect.hasField(obj, "TJ_unserialize") #else (obj.TJ_unserialize != null) #end) {
+				/* End of the object */
+
+				if(isClassOb && hasUnserializeFunc(obj)) // If it's a class object, run it's `TJ_unserialize` function, if present
+				{
 					obj.TJ_unserialize();
+				}
+				else if(isEnumOb) // If it's an enum object, we create the enum instance and return it
+				{
+					// If no `arguments` field was set, we just leave it blank
+					if(!enmInfo.exists("arguments")) enmInfo.set("arguments", []);
+
+					obj = Type.createEnum(obj, enmInfo.get("name"), enmInfo.get("arguments"));
 				}
 
 				return obj;
@@ -145,6 +157,20 @@ class TJSONParser {
 
 				continue;
 			}
+			else if(key == TJSON.HAXE_ENUM_REFERENCE_PREFIX) // The key has the Haxe enum reference prefix, so it's an enum
+			{
+				var enm:Enum<Dynamic> = Type.resolveEnum(v);
+				if(enm == null) throw "Invalid enum name - " + v;
+
+				enmInfo = [];
+				obj = enm;
+
+				cache.pop();
+				cache.push(obj);
+				isEnumOb = true;
+
+				continue;
+			}
 
 			if(v == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside object
 			{
@@ -157,6 +183,16 @@ class TJSONParser {
 			else // We convert the value into it's proper type
 			{
 				val = convertStringToType(v);
+			}
+
+			// We are inside an enum declaration
+			if(isEnumOb) {
+				if(key == "name" || key == "arguments")
+				{
+					enmInfo.set(key, val);
+				}
+
+				continue;
 			}
 
 			Reflect.setField(obj, key, val);
@@ -205,8 +241,8 @@ class TJSONParser {
 	private function convertStringToType(symbol:String):Dynamic {
 		if(lastSymbolQuoted) // String
 		{
-			/* The value was in quotes, so it's a string.
-			 * We look for the reference prefix, and return the cached reference if it is. */
+			/* The value was in quotes, so it's a string. We look
+			for the reference prefix, and return the cached reference if it is. */
 			if(StringTools.startsWith(symbol, TJSON.OBJECT_REFERENCE_PREFIX)){
 				var idx:Int = Std.parseInt(symbol.substr(TJSON.OBJECT_REFERENCE_PREFIX.length));
 				return cache[idx];
@@ -232,6 +268,19 @@ class TJSONParser {
 		}
 
 		return symbol;
+	}
+
+	/**
+	 * Checks whether `obj` has the `TJ_unserialize` function.
+	 */
+	private inline function hasUnserializeFunc(obj:Dynamic):Bool {
+		#if(flash9)
+		return try obj.TJ_unserialize != null catch( e : Dynamic ) false;
+		#elseif(cs || java)
+		return Reflect.hasField(obj, "TJ_unserialize");
+		#else
+		return (obj.TJ_unserialize != null);
+		#end
 	}
 
 	/**
@@ -445,6 +494,11 @@ class TJSONEncoder {
 		{
 			buffer.add(encodeMap(obj, st, 0));
 		}
+		else if(Reflect.isEnumValue(obj)) // Enum instance
+		{
+			cacheEncode(obj);
+			buffer.add(encodeEnum(obj, st, 0));
+		}
 		else
 		{
 			cacheEncode(obj);
@@ -481,6 +535,7 @@ class TJSONEncoder {
 					#elseif(cs || java) Reflect.hasField(obj, "TJ_noEncode") #else (obj.TJ_noEncode != null) #end) {
 					blacklistedFields = obj.TJ_noEncode();
 				}
+
 			default:
 		}
 
@@ -502,6 +557,35 @@ class TJSONEncoder {
 		return buffer.toString();
 	}
 
+	private function encodeEnum(obj:EnumValue, style:EncodeStyle, depth:Int):String {
+		var buffer:StringBuf = new StringBuf();
+		buffer.add(style.beginObject(depth));
+
+		// First we encode the enum reference so the parser picks it up first
+		switch(Type.typeof(obj)) {
+			case TEnum(e):
+				buffer.add(style.firstEntry(depth));
+
+				buffer.add('"' + TJSON.HAXE_ENUM_REFERENCE_PREFIX + '"' + style.keyValueSeperator(depth));
+				buffer.add(encodeValue(Type.getEnumName(e), style, depth));
+
+			default:
+		}
+
+		// Then we do the enum instance name
+		buffer.add(style.entrySeperator(depth));
+		buffer.add('"name"' + style.keyValueSeperator(depth) + encodeValue(Type.enumConstructor(obj), style, depth));
+
+		// Lastly, we do the arguments, if any
+		var enumValueArguments:Array<Dynamic> = Type.enumParameters(obj);
+		if(enumValueArguments != null && enumValueArguments.length > 0) {
+			buffer.add(style.entrySeperator(depth));
+			buffer.add('"arguments"' + style.keyValueSeperator(depth) + encodeValue(enumValueArguments, style, depth));
+		}
+
+		buffer.add(style.endObject(depth));
+		return buffer.toString();
+	}
 
 	private function encodeMap(obj:Map<Dynamic, Dynamic>, style:EncodeStyle, depth:Int):String {
 		var buffer = new StringBuf();
@@ -554,42 +638,49 @@ class TJSONEncoder {
 
 
 	private function encodeValue(value:Dynamic, style:EncodeStyle, depth:Int):String {
-		if(isOfType(value, Int) || isOfType(value, Float)) //Numbers
+		if(isOfType(value, Int) || isOfType(value, Float)) // Numbers
 		{
 			return Std.string(value);
 		}
-		else if(isOfType(value, Array) || isOfType(value, List)) //Arrays / Lists
+		else if(isOfType(value, Array) || isOfType(value, List)) // Arrays / Lists
 		{
 			var v:Array<Dynamic> = value;
 			return encodeIterable(v, style, depth + 1);
 		}
-		else if(isOfType(value, List)) //Lists
+		else if(isOfType(value, List)) // Lists
 		{
 			var v:List<Dynamic> = value;
 			return encodeIterable(v, style, depth + 1);
 		}
-		else if(isOfType(value, haxe.ds.StringMap)) //String maps
+		else if(isOfType(value, haxe.ds.StringMap)) // String maps
 		{
 			return encodeMap(value, style, depth + 1);
 		}
-		else if(isOfType(value, String)) //Strings
+		else if(isOfType(value, String)) // Strings
 		{
 			return ('"' + Std.string(value).replace("\\","\\\\").replace("\n","\\n").replace("\r","\\r").replace('"','\\"') + '"');
 		}
-		else if(isOfType(value, Bool)) //Bools
+		else if(isOfType(value, Bool)) // Bools
 		{
 			return (value == true ? "true" : "false");
 		}
-		else if(Reflect.isObject(value)) //Objects
+		else if(Reflect.isObject(value)) // Objects, Classes, and Enum instances
 		{
 			var ret = cacheEncode(value);
 			if(ret != null) return ret;
 
 			return encodeObject(value, style, depth + 1);
 		}
-		else if(value == null) //Null
+		else if(value == null) // Null
 		{
 			return "null";
+		}
+		else if(Reflect.isEnumValue(value))
+		{
+			var ret = cacheEncode(value);
+			if(ret != null) return ret;
+
+			return encodeEnum(value, style, depth + 1);
 		}
 		else
 		{
