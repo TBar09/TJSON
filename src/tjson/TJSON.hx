@@ -7,7 +7,7 @@ import Std.is as isOfType;
 #end
 
 using StringTools;
-class TJSON {    
+class TJSON {
 	public static inline var OBJECT_REFERENCE_PREFIX:String = "@~obRef#";
 
 	public static inline var HAXE_CLASS_REFERENCE_PREFIX:String = "_hxcls";
@@ -144,7 +144,7 @@ class TJSONParser {
 			}
 
 			var v:String = getNextSymbol();
-			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX) // The key has the Haxe class reference prefix, so it's a class
+			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX && !isEnumOb) // The key has the Haxe class reference key, so it's a class
 			{
 				var cls:Class<Dynamic> = Type.resolveClass(v);
 				if(cls == null) throw "Invalid class name - " + v;
@@ -157,7 +157,7 @@ class TJSONParser {
 
 				continue;
 			}
-			else if(key == TJSON.HAXE_ENUM_REFERENCE_PREFIX) // The key has the Haxe enum reference prefix, so it's an enum
+			else if(key == TJSON.HAXE_ENUM_REFERENCE_PREFIX && !isClassOb) // The key has the Haxe enum reference key, so it's an enum
 			{
 				var enm:Enum<Dynamic> = Type.resolveEnum(v);
 				if(enm == null) throw "Invalid enum name - " + v;
@@ -248,7 +248,7 @@ class TJSONParser {
 				return cache[idx];
 			}
 
-			return symbol; //It's just a normal string, so return it.
+			return symbol; // It's just a normal string, so return it.
 		}
 		else if(canBeFloat(symbol)) // Float
 		{
@@ -304,9 +304,9 @@ class TJSONParser {
 	private function getNextSymbol():String {
 		lastSymbolQuoted = false;
 
-		var c:String = '';
+		var c:Int = 0;
 		var inQuote:Bool = false;
-		var quoteType:String = "";
+		var quoteType:Int = 0;
 		var symbol:String = '';
 		var inEscape:Bool = false;
 		var inSymbol:Bool = false;
@@ -314,11 +314,11 @@ class TJSONParser {
 		var inBlockComment:Bool = false;
 
 		while(pos < json.length) {
-			c = json.charAt(pos++);
+			c = json.fastCodeAt(pos++);
 
-			if(c == "\n" && !inSymbol) currentLine++;
+			if(c == "\n".code && !inSymbol) currentLine++;
 			if(inLineComment) {
-				if(c == "\n" || c == "\r") {
+				if(c == "\n".code || c == "\r".code) {
 					inLineComment = false;
 					pos++;
 				}
@@ -326,7 +326,7 @@ class TJSONParser {
 			}
 
 			if(inBlockComment) {
-				if(c == "*" && json.charAt(pos) == "/") {
+				if(c == '*'.code && json.fastCodeAt(pos) == '/'.code) {
 					inBlockComment = false;
 					pos++;
 				}
@@ -336,31 +336,31 @@ class TJSONParser {
 			if(inQuote) {
 				if(inEscape) {
 					inEscape = false;
-					if(c == "'" || c == '"') {
-						symbol += c;
+					if(c == "'".code || c == '"'.code) {
+						symbol += String.fromCharCode(c);
 						continue;
 					}
-					else if(c == "t") {
+					else if(c == 't'.code) {
 						symbol += "\t";
 						continue;
 					}
-					else if(c == "n") {
+					else if(c == 'n'.code) {
 						symbol += "\n";
 						continue;
 					}
-					else if(c == "\\") {
+					else if(c == "\\".code) {
 						symbol += "\\";
 						continue;
 					}
-					else if(c == "r") {
+					else if(c == 'r'.code) {
 						symbol += "\r";
 						continue;
 					}
-					else if(c == "/") {
+					else if(c == '/'.code) {
 						symbol += "/";
 						continue;
 					}
-					else if(c == "u") {
+					else if(c == 'u'.code) {
 						var hexValue:Int = 0;
 
 						for (i in 0...4) {
@@ -368,14 +368,14 @@ class TJSONParser {
 								throw "Unfinished UTF8 character";
 							}
 
-							var nc:Int = json.charCodeAt(pos++);
+							var nc:Int = json.fastCodeAt(pos++);
 							hexValue = hexValue << 4;
 
 							if (nc >= '0'.code && nc <= '9'.code) { /* 0..9 */
 								hexValue += nc - 48;
 							} else if (nc >= 'A'.code && nc <= 'F'.code) { /* A..F */
 								hexValue += 10 + nc - 65;
-							} else if (nc >= 'a'.code && nc <= 'f'.code) {/* a..f */
+							} else if (nc >= 'a'.code && nc <= 'f'.code) { /* a..f */
 								hexValue += 10 + nc - 95;
 							} else {
 								throw "Not a hex digit";
@@ -387,9 +387,9 @@ class TJSONParser {
 						continue;
 					}
 
-					throw "Invalid escape sequence '\\" + c + "'";
+					throw "Invalid escape sequence '\\" + String.fromCharCode(c) + "'";
 				} else {
-					if(c == "\\") {
+					if(c == "\\".code) {
 						inEscape = true;
 						continue;
 					}
@@ -397,22 +397,22 @@ class TJSONParser {
 						return symbol;
 					}
 
-					symbol += c;
+					symbol += String.fromCharCode(c);
 					continue;
 				}
 			}
-			else if(c == "/") // Handle both types of comments. These can even interrupt a symbol
+			else if(c == '/'.code) // Handle both types of comments. These can even interrupt a symbol
 			{
-				var c2 = json.charAt(pos);
+				var c2 = json.fastCodeAt(pos);
 				// Handle single line comments
-				if(c2 == "/"){
+				if(c2 == '/'.code){
 					inLineComment = true;
 					pos++;
 					continue;
 				}
 
 				// Handle multi-line/block comments
-				else if(c2 == "*") {
+				else if(c2 == '*'.code) {
 					inBlockComment = true;
 					pos++;
 					continue;
@@ -421,37 +421,38 @@ class TJSONParser {
 
 
 			if (inSymbol) {
-				if(c == ' ' || c == "\n" || c == "\r" || c == "\t" || c == ',' || c == ":" || c == "}" || c == "]") { // End of symbol, return it
+				// End of symbol, return it
+				if(c == ' '.code || c == "\n".code || c == "\r".code || c == "\t".code || c == ','.code || c == ':'.code || c == '}'.code || c == ']'.code) {
 					pos--;
 					return symbol;
 				} else {
-					symbol += c;
+					symbol += String.fromCharCode(c);
 					continue;
 				}
 			} else {
-				if(c == ' ' || c == "\t" || c == "\n" || c == "\r"){
+				if(c == ' '.code || c == "\t".code || c == "\n".code || c == "\r".code) {
 					continue;
 				}
 
-				if(c == "{" || c == "}" || c == "[" || c == "]" || c == "," || c == ":") {
-					return c;
+				if(c == '{'.code || c == '}'.code || c == '['.code || c == ']'.code || c == ','.code || c == ':'.code) {
+					return String.fromCharCode(c);
 				}
 
-				if(c == "'" || c == '"'){
+				if(c == "'".code || c == '"'.code) {
 					inQuote = true;
 					quoteType = c;
 					lastSymbolQuoted = true;
 					continue;
 				} else {
 					inSymbol = true;
-					symbol = c;
+					symbol = String.fromCharCode(c);
 					continue;
 				}
 			}
 		} // End of while loop. We have reached EOF if we are here.
 
 		if(inQuote) {
-			throw "Unexpected end of data. Expected ( " + quoteType + " )";
+			throw "Unexpected end of data. Expected ( " + String.fromCharCode(quoteType) + " )";
 		}
 
 		return symbol;
@@ -474,8 +475,8 @@ class TJSONEncoder {
 		if(uCache) cache = new Array<Dynamic>();
 	}
 
-	public function doEncode(obj:Dynamic, ?style:EncodingType = SIMPLE) {
-		if(!Reflect.isObject(obj)) {
+	public function doEncode(obj:Dynamic, ?style:EncodingType) {
+		if(!Reflect.isObject(obj) && !Reflect.isEnumValue(obj)) {
 			throw "Provided variable is not an object";
 		}
 
@@ -531,8 +532,7 @@ class TJSONEncoder {
 				buffer.add('"' + TJSON.HAXE_CLASS_REFERENCE_PREFIX + '"' + style.keyValueSeperator(depth));
 				buffer.add(encodeValue(Type.getClassName(c), style, depth));
 
-				if(#if(flash9) try obj.TJ_noEncode != null catch(e:Dynamic) false
-					#elseif(cs || java) Reflect.hasField(obj, "TJ_noEncode") #else (obj.TJ_noEncode != null) #end) {
+				if(hasNoEncodeFunc(obj)) {
 					blacklistedFields = obj.TJ_noEncode();
 				}
 
@@ -686,6 +686,19 @@ class TJSONEncoder {
 		{
 			return null;
 		}
+	}
+
+	/**
+	 * Checks whether `obj` has the `TJ_noEncode` function.
+	 */
+	private inline function hasNoEncodeFunc(obj:Dynamic):Bool {
+		#if(flash9)
+		return try obj.TJ_noEncode != null catch( e : Dynamic ) false;
+		#elseif(cs || java)
+		return Reflect.hasField(obj, "TJ_noEncode");
+		#else
+		return (obj.TJ_unserialize != null);
+		#end
 	}
 }
 
