@@ -21,9 +21,13 @@ In addition to base JSON features, TJSON includes the features below:
 New to TJSON Improved are the features below:
 
 - Enum parsing & printing support, both simple enums and ones with arguments.
+- Numbers with the `+` prefix are accepted, like JSON5.
+- Hexadecimals are accepted, like JSON5.
 - All `Std.is` calls are replace with `Std.isOfType` if Haxe version is 4.2.0 or higher.
 - Improved code readability.
 - Improved performance.
+
+This also makes TJSON a good [JSON5](https://json5.org/) parser.
 
 ## Usage
 
@@ -37,9 +41,10 @@ haxelib git tjson https://github.com/TBar09/TJSON.git
 ### Use in projects
 
 For Haxe projects, simply add:
-```
+```bat
 -L tjson
 ```
+
 For Lime/OpenFL's project.xml, simply add:
 ```xml
 <haxelib name="tjson"/>
@@ -50,10 +55,11 @@ For Lime/OpenFL's project.xml, simply add:
 On it's own, using TJSON's static methods will use `haxe.Json` by default. 
 
 In order to use the TJSON parsers/printers, you need to activate them using a define, like so for the command line or hxml files:
-```
+```bat
 -D useTJSONParser
 -D useTJSONPrinter
 ```
+
 Or this, if you are using a Project.xml:
 ```xml
 <haxedef name="useTJSONParser"/> <!-- Use the TJSON parser. -->
@@ -62,6 +68,7 @@ Or this, if you are using a Project.xml:
 
 > [!NOTE]
 > The reason why the Haxelib uses defines to activate it's methods is so that someone can freely use `tjson.TJSON.parse` in their code without conditionals or a proxy.
+>
 > That way, if you decide to use the `haxe.Json` later on (*Or if a certain target doesn't work well with TJSON*), you can simply remove the `useTJSONParser`/`useTJSONPrinter` define without needing to change all instances of `tjson.TJSON` with `haxe.Json`.
 
 ---

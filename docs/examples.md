@@ -218,4 +218,60 @@ var result:Dynamic = tjson.TJSON.parse(myJSONString);
 trace(result.myUnicodeStr); // АБВГД абвгд
 ```
 
+Hexadecimal example:
+```haxe
+var myJSONString:String = '
+{
+	"myHexa": 0xFF040404,
+	"myOtherHexa": 0X0Fcc1200,
+	"myBackupHexa": 0x00000000
+}
+';
+
+var result:Dynamic = tjson.TJSON.parse(myJSONString);
+
+trace((result.myHexa == 0xFF040404)); // true
+trace((result.myOtherHexa == 0x0Fcc1200)); // true
+trace((result.myBackupHexa == 0x00000010)); // false
+```
+
+Number Constants parsing example:
+```haxe
+var myJSONString:String = '
+{
+	"inf": Infinity,
+	"posInf": +Infinity,
+	"negInf": -Infinity,
+	"nanVal": NaN
+}
+';
+
+var result:Dynamic = tjson.TJSON.parse(myJSONString);
+
+trace((Math.POSITIVE_INFINITY == result.inf)); // true
+trace((Math.NEGATIVE_INFINITY == result.negInf)); // true
+trace((Math.POSITIVE_INFINITY == result.posInf)); // true
+trace(Math.isNaN(result.nanVal)); // true
+```
+
+Number Constants printing example:
+```haxe
+var obj = {
+	inf: Math.POSITIVE_INFINITY,
+	negInf: Math.NEGATIVE_INFINITY,
+	nan: Math.NaN
+}
+
+var myJSONString:String = tjson.TJSON.encode(obj, FANCY);
+
+/*
+{
+	"negInf": -Infinity,
+	"inf": Infinity,
+	"nan": NaN
+}
+*/
+trace(myJSONString);
+```
+
 ---
