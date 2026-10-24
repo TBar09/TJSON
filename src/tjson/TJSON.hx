@@ -70,13 +70,15 @@ class TJSONParser {
 	var fileName:String;
 
 	var lastSymbolQuoted:Bool; //true if the last symbol was in quotes.
+
 	var floatRegex:EReg;
 	var intRegex:EReg;
+	var hexaRegex:EReg;
 
 	var cache:Array<Dynamic>;
 	var strProcessor:String->Dynamic;
 
-	public function new(vjson:String, ?vfileName:String = "TJSON.json", ?stringProcessor:String->Dynamic = null) {
+	public function new(vjson:String, ?vfileName:String = "TJSON.json", ?stringProcessor:String->Dynamic) {
 		this.json = vjson;
 		this.fileName = vfileName;
 		this.currentLine = 1;
@@ -84,8 +86,9 @@ class TJSONParser {
 
 		this.lastSymbolQuoted = false;
 
-		this.floatRegex = ~/^-?[0-9]*\.[0-9]+$/;
-		this.intRegex = ~/^-?[0-9]+$/;
+		this.floatRegex = ~/^[+-]?[0-9]*\.[0-9]+$/;
+		this.intRegex = ~/^[+-]?[0-9]+$/;
+		this.hexaRegex = ~/^[+-]?(?:0x)[0-9a-f]+$/i; // https://github.com/Sword352/json5hx/blob/main/lib/haxe/json5/Parser.hx#L12
 
 		this.strProcessor = (stringProcessor == null ? defaultStringProcessor : stringProcessor);
 		this.cache = new Array();
@@ -107,7 +110,7 @@ class TJSONParser {
 	private function doObject():Dynamic {
 		var obj:Dynamic = {};
 
-		var val:Dynamic = '';
+		var value:Dynamic = '';
 		var key:String;
 
 		var isClassOb:Bool = false;
@@ -174,28 +177,28 @@ class TJSONParser {
 
 			if(v == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside object
 			{
-				val = doObject();
+				value = doObject();
 			}
 			else if(v == "[" && !lastSymbolQuoted) // An opening bracket, start array inside object
 			{
-				val = doArray();
+				value = doArray();
 			}
 			else // We convert the value into it's proper type
 			{
-				val = convertStringToType(v);
+				value = convertStringToType(v);
 			}
 
 			// We are inside an enum declaration
 			if(isEnumOb) {
 				if(key == "name" || key == "arguments")
 				{
-					enmInfo.set(key, val);
+					enmInfo.set(key, value);
 				}
 
 				continue;
 			}
 
-			Reflect.setField(obj, key, val);
+			Reflect.setField(obj, key, value);
 		}
 
 		throw "Unexpected end of file. Expected '}'";
@@ -203,33 +206,33 @@ class TJSONParser {
 
 	private function doArray():Dynamic {
 		var arr:Array<Dynamic> = new Array<Dynamic>();
-		var val:Dynamic;
+		var value:Dynamic;
 
 		while(pos < json.length) {
-			val = getNextSymbol();
+			value = getNextSymbol();
 
-			if(val == ',' && !lastSymbolQuoted) // A comma, stop last value and start new one
+			if(value == ',' && !lastSymbolQuoted) // A comma, stop last value and start new one
 			{
 				continue;
 			}
-			else if(val == ']' && !lastSymbolQuoted) // A closing bracket, stop array reading and return it
+			else if(value == ']' && !lastSymbolQuoted) // A closing bracket, stop array reading and return it
 			{
 				return arr;
 			}
-			else if(val == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside array
+			else if(value == "{" && !lastSymbolQuoted) // An opening curly bracket, start object inside array
 			{
-				val = doObject();
+				value = doObject();
 			}
-			else if(val == "[" && !lastSymbolQuoted) // An opening bracket, start array inside array
+			else if(value == "[" && !lastSymbolQuoted) // An opening bracket, start array inside array
 			{
-				val = doArray();
+				value = doArray();
 			}
 			else // Anything else, we convert the value into it's proper type
 			{
-				val = convertStringToType(val);
+				value = convertStringToType(value);
 			}
 
-			arr.push(val);
+			arr.push(value);
 		}
 
 		throw "Unexpected end of file. Expected ']'";
@@ -266,6 +269,18 @@ class TJSONParser {
 		{
 			return null;
 		}
+		else if(symbol == "Infinity" || symbol == "+Infinity") // Math.POSITIVE_INFINITY
+		{
+			return Math.POSITIVE_INFINITY;
+		}
+		else if(symbol == "-Infinity") // Math.NEGATIVE_INFINITY
+		{
+			return Math.NEGATIVE_INFINITY;
+		}
+		else if(symbol == "NaN" || symbol == "+NaN" || symbol == "-NaN") // Math.NaN
+		{
+			return Math.NaN;
+		}
 
 		return symbol;
 	}
@@ -287,18 +302,19 @@ class TJSONParser {
 	 * Returns whether the given string can be a Float.
 	 */
 	private inline function canBeFloat(s:String):Bool {
-		return floatRegex.match(s) || (
-			canBeInt(s) && {
-			var intStr:String = intRegex.matched(0);
-			intStr > (intStr.charCodeAt(0) == '-'.code ? "-2147483648" : "2147483647");
-		});
+		return (floatRegex.match(s) || (
+			intRegex.match(s) && {
+				var intStr:String = intRegex.matched(0);
+				intStr > (intStr.charCodeAt(0) == '-'.code ? "-2147483648" : "2147483647");
+			}
+		));
 	}
 
 	/**
 	 * Returns whether the given string can be a Integer.
 	 */
 	private inline function canBeInt(s:String):Bool {
-		return intRegex.match(s);
+		return (intRegex.match(s) || hexaRegex.match(s));
 	}
 
 	private function getNextSymbol():String {
@@ -477,7 +493,7 @@ class TJSONEncoder {
 
 	public function doEncode(obj:Dynamic, ?style:EncodingType) {
 		if(!Reflect.isObject(obj) && !Reflect.isEnumValue(obj)) {
-			throw "Provided variable is not an object";
+			throw "Provided variable is not an object or an enum value";
 		}
 
 		var st:EncodeStyle = switch(style) {
@@ -640,17 +656,19 @@ class TJSONEncoder {
 	private function encodeValue(value:Dynamic, style:EncodeStyle, depth:Int):String {
 		if(isOfType(value, Int) || isOfType(value, Float)) // Numbers
 		{
+			if(value == Math.POSITIVE_INFINITY) return "Infinity";
+			else if(value == Math.NEGATIVE_INFINITY) return "-Infinity";
+			else if(Math.isNaN(value)) return "NaN";
+
 			return Std.string(value);
 		}
-		else if(isOfType(value, Array) || isOfType(value, List)) // Arrays / Lists
+		else if(isOfType(value, Array)) // Arrays
 		{
-			var v:Array<Dynamic> = value;
-			return encodeIterable(v, style, depth + 1);
+			return encodeIterable((value : Array<Dynamic>), style, depth + 1);
 		}
 		else if(isOfType(value, List)) // Lists
 		{
-			var v:List<Dynamic> = value;
-			return encodeIterable(v, style, depth + 1);
+			return encodeIterable((value : List<Dynamic>), style, depth + 1);
 		}
 		else if(isOfType(value, haxe.ds.StringMap)) // String maps
 		{
@@ -658,13 +676,13 @@ class TJSONEncoder {
 		}
 		else if(isOfType(value, String)) // Strings
 		{
-			return ('"' + Std.string(value).replace("\\","\\\\").replace("\n","\\n").replace("\r","\\r").replace('"','\\"') + '"');
+			return ('"' + Std.string(value).replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace('"', '\\"') + '"');
 		}
 		else if(isOfType(value, Bool)) // Bools
 		{
 			return (value == true ? "true" : "false");
 		}
-		else if(Reflect.isObject(value)) // Objects, Classes, and Enum instances
+		else if(Reflect.isObject(value)) // Objects and Classes
 		{
 			var ret = cacheEncode(value);
 			if(ret != null) return ret;
@@ -675,17 +693,15 @@ class TJSONEncoder {
 		{
 			return "null";
 		}
-		else if(Reflect.isEnumValue(value))
+		else if(Reflect.isEnumValue(value)) // Enum Value
 		{
 			var ret = cacheEncode(value);
 			if(ret != null) return ret;
 
 			return encodeEnum(value, style, depth + 1);
 		}
-		else
-		{
-			return null;
-		}
+
+		return null;
 	}
 
 	/**

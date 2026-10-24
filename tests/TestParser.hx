@@ -133,22 +133,32 @@ class TestParser extends haxe.unit.TestCase {
 	}
 
 	/**
-	 * Test out simple encoding.
+	 * Test out simple encoding of an object.
 	 */
 	public function testEncodeObject() {
 		var result:String = TJSON.encode({key: 'value', key2: {anotherKey: "another\nValue"}});
 		assertEquals('{"key2":{"anotherKey":"another\\nValue"},"key":"value"}', result);
 	}
 
+	/**
+	 * Test out simple encoding of an array.
+	 */
 	public function testEncodeArray() {
 		var result:String = TJSON.encode([1,2,3,4,[10,10,{myKey:"My\nValue"}]]);
 		assertEquals('[1,2,3,4,[10,10,{"myKey":"My\\nValue"}]]', result);
 	}
+
+	/**
+	 * Test out simple encoding of a string map.
+	 */
 	public function testEncodeMap() {
 		var result:String =  TJSON.encode(["key" => ["newKey" => "value"], "key2" => ["anotherKey" => "another\nValue"]]);
 		assertEquals('{"key":{"newKey":"value"},"key2":{"anotherKey":"another\\nValue"}}', result);
 	}
 
+	/**
+	 * Test out simple encoding of a list.
+	 */
 	public function testEncodeList() {
 		var list:List<Dynamic> = new List<Dynamic>();
 
@@ -166,6 +176,9 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals('["test",{"key":"myObject","intval":31},[1,2,3,4],[1,"two",[]]]', TJSON.encode(list));
 	}
 
+	/**
+	 * Test out parsing and encoding of an object with strings and arrays.
+	 */
 	public function testFullCircleObject() {
 		var origObj = {
 			'1': 'a',
@@ -197,6 +210,9 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals('anotherValue', Reflect.field(Reflect.field(generatedObj, 'anArray')[0], 'anotherKey'));
 	}
 
+	/**
+	 * Test out parsing and encoding of special characters in a string.
+	 */
 	public function testCrazyCharacters() {
 		var origObj = {
 			"str": "!@#$%^&*()_+\"'/.,\\;':{}"
@@ -207,6 +223,9 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals(origObj.str, generatedObj.str);
 	}
 
+	/**
+	 * Test out parsing of unicode escapes (`\u`). This is skipped on Neko.
+	 */
 	public function testUtf8Chars() {
 		#if target.unicode
 		var s:String = '{"str":"\\u0410\\u0411\\u0412\\u0413\\u0414 \\u0430\\u0431\\u0432\\u0433\\u0434"}';
@@ -218,7 +237,12 @@ class TestParser extends haxe.unit.TestCase {
 		#end
 	}
 
-    public function testInt() {
+	/**
+	 * Test out simple parsing of numbers, including positives & negatives
+	 * of both floats and integers. Also tests out the `+` prefix on a number,
+	 * which is supported on JSON5.
+	 */
+    public function testNumbers() {
     	var intStr:String = '{"v": 500}';
     	var obj:Dynamic = TJSON.parse(intStr);
 
@@ -226,7 +250,7 @@ class TestParser extends haxe.unit.TestCase {
     	assertTrue(isOfType(obj.v, Int));
 
 
-    	var intStr:String = "{v:2147483647}";
+    	var intStr:String = "{v: +2147483647}";
     	var obj:Dynamic = TJSON.parse(intStr);
 
     	assertEquals(2147483647, obj.v);
@@ -252,8 +276,35 @@ class TestParser extends haxe.unit.TestCase {
 
     	assertEquals(-5000000000.0, obj.v);
     	assertTrue(isOfType(obj.v, Float));
+
+		var intStr:String = '{"v": 0xFFa1ff12}';
+		var obj:Dynamic = TJSON.parse(intStr);
+
+		assertEquals(0xFFa1ff12, obj.v);
+		assertTrue(isOfType(obj.v, Float));
     }
 
+	/**
+	 * Test out parsing and encoding of number constants, like Infinity and Not-a-Number (NaN).
+	 */
+	public function testNumberConstants() {
+		var constStr:String = '{"inf": Infinity, "posInf": +Infinity, "negInf": -Infinity, "nanVal": NaN}';
+		var obj:Dynamic = TJSON.parse(constStr);
+
+		assertEquals(Math.POSITIVE_INFINITY, obj.inf);
+		assertEquals(Math.POSITIVE_INFINITY, obj.posInf);
+		assertEquals(Math.NEGATIVE_INFINITY, obj.negInf);
+		assertTrue(Math.isNaN(obj.nanVal));
+
+
+		var generatedObj:String = TJSON.encode({inf: Math.POSITIVE_INFINITY, negInf: Math.NEGATIVE_INFINITY, nan: Math.NaN});
+		assertEquals('{"negInf":-Infinity,"inf":Infinity,"nan":NaN}', generatedObj);
+	}
+
+	/**
+	 * Test out parsing of a real-world json file containing an object with
+	 * many nested objects. This only checks if parsing succeeds.
+	 */
 	public function testChars() {
 		var data:String = File.getContent('./data/chars.json');
 		var d:Dynamic = TJSON.parse(data);
@@ -262,6 +313,9 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals(1, 1);
 	}
 
+	/**
+	 * Test out parsing and encoding of a "wacky" JSON string.
+	 */
 	public function testFullCircle2() {
 		var test = tjson.TJSON.parse('{
 			object : customer,
@@ -282,6 +336,11 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals(string1, string2);
 	}
 
+	/**
+	 * Test out parsing and encoding of a null value (`null`), a string
+	 * posing to be a null value (`"null"`), and an array containing both
+	 * a null value and a not-null value.
+	 */
 	public function testNull() {
 		var obj:Dynamic = {"nullVal": null, 'non-null': 'null', "array": [null, 1]};
 		var data:String = TJSON.encode(obj);
@@ -292,6 +351,11 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals('{"non-null":"null","nullVal":null,"array":[null,1]}', data2);
 	}
 
+	/**
+	 * Test out parsing and encoding of a class.
+	 * This also tests out classes with both a `TJ_unserialize` method and
+	 * a `TJ_noEncode` method.
+	 */
 	public function testClassObject() {
 		var obj:TestClass = new TestClass();
 		obj.setPriv("this works");
@@ -331,19 +395,35 @@ class TestParser extends haxe.unit.TestCase {
         assertEquals(null, ob2.dontSerialize);
 	}
 
+	/**
+	 * Test out parsing and encoding of an enum. Both a simple
+	 * enum and an enum with arguments are tested here.
+	 */
 	public function testEnumObject() {
-		var obj:TestEnum = CUSTOM("My Custom Car", 256, true);
+		var enmVal:TestEnum = CUSTOM("My Custom Car", 256, true);
+		var simpleEnmVal:TestEnum = TRUCK;
 
 		// Serialize enum object
-		var json:String = TJSON.encode({enm: obj});
+		var json:String = TJSON.encode({enm: enmVal, enm2: simpleEnmVal});
 		// trace(json);
 
 		// Unserialize enum object
-		var ob2:Dynamic = TJSON.parse(json);
+		var obj:Dynamic = TJSON.parse(json);
 
-		assertTrue(Type.enumEq(CUSTOM("My Custom Car", 256, true), ob2.enm));
+		assertEquals('{"enm2":{"_hxenm":"TestEnum","name":"TRUCK"},"enm":{"_hxenm":"TestEnum","name":"CUSTOM","arguments":["My Custom Car",256,true]}}', json);
+		assertTrue(Type.enumEq(CUSTOM("My Custom Car", 256, true), obj.enm));
+		assertTrue(Type.enumEq(TRUCK, obj.enm2));
 	}
 
+	/**
+	 * Test out encoding and parsing of an array of repeated classes &
+	 * 2 entries that are the same class. These 2 classes will have the
+	 * "object reference prefix" added to them and are added to the cache.
+	 *
+	 * Then, when the JSON is parsed and these 2 same entries are compared
+	 * to each other in an equality check, they will end up being the same
+	 * and return true.
+	 */
 	public function testObjectReferences() {
 		var arr:Array<TestClass> = new Array();
 		var ob1:TestClass = new TestClass();
@@ -362,5 +442,4 @@ class TestParser extends haxe.unit.TestCase {
 		var res:Dynamic = TJSON.parse(json);
 		assertEquals(res[4], res[2]);
 	}
-	
 }
