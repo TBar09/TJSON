@@ -69,7 +69,7 @@ class TJSONParser {
 	var json:String;
 	var fileName:String;
 
-	var lastSymbolQuoted:Bool; //true if the last symbol was in quotes.
+	var lastSymbolQuoted:Bool; // `true` if the last symbol was in quotes.
 
 	var floatRegex:EReg;
 	var intRegex:EReg;
@@ -78,9 +78,9 @@ class TJSONParser {
 	var cache:Array<Dynamic>;
 	var strProcessor:String->Dynamic;
 
-	public function new(vjson:String, ?vfileName:String = "TJSON.json", ?stringProcessor:String->Dynamic) {
-		this.json = vjson;
-		this.fileName = vfileName;
+	public function new(jsonStr:String, ?fileName:String, ?stringProcessor:String->Dynamic) {
+		this.json = jsonStr;
+		this.fileName = (fileName == null ? "TJSON.json" : fileName);
 		this.currentLine = 1;
 		this.pos = 0;
 
@@ -143,14 +143,16 @@ class TJSONParser {
 
 			var seperator:String = getNextSymbol();
 			if(seperator != ":") {
-				throw "Expected ':' but got '" + seperator + "' instead";
+				throw ('Expected ":" but got \"' + seperator + '\" instead');
 			}
 
 			var v:String = getNextSymbol();
 			if(key == TJSON.HAXE_CLASS_REFERENCE_PREFIX && !isEnumOb) // The key has the Haxe class reference key, so it's a class
 			{
 				var cls:Class<Dynamic> = Type.resolveClass(v);
-				if(cls == null) throw "Invalid class name - " + v;
+				if(cls == null) {
+					throw ("Invalid JSON class - \"" + v + "\"");
+				}
 
 				obj = Type.createEmptyInstance(cls);
 
@@ -163,7 +165,9 @@ class TJSONParser {
 			else if(key == TJSON.HAXE_ENUM_REFERENCE_PREFIX && !isClassOb) // The key has the Haxe enum reference key, so it's an enum
 			{
 				var enm:Enum<Dynamic> = Type.resolveEnum(v);
-				if(enm == null) throw "Invalid enum name - " + v;
+				if(enm == null) {
+					throw ("Invalid JSON enum - \"" + v + "\"");
+				}
 
 				enmInfo = [];
 				obj = enm;
@@ -201,7 +205,7 @@ class TJSONParser {
 			Reflect.setField(obj, key, value);
 		}
 
-		throw "Unexpected end of file. Expected '}'";
+		throw 'Unexpected EOF (End of File). Expected "}"';
 	}
 
 	private function doArray():Dynamic {
@@ -235,7 +239,7 @@ class TJSONParser {
 			arr.push(value);
 		}
 
-		throw "Unexpected end of file. Expected ']'";
+		throw 'Unexpected EOF (End of File). Expected "]"';
 	}
 
 	/**
@@ -306,8 +310,8 @@ class TJSONParser {
 			intRegex.match(s) && {
 				var intStr:String = intRegex.matched(0);
 				intStr > (intStr.charCodeAt(0) == '-'.code ? "-2147483648" : "2147483647");
-			}
-		));
+			})
+		);
 	}
 
 	/**
@@ -403,7 +407,7 @@ class TJSONParser {
 						continue;
 					}
 
-					throw "Invalid escape sequence '\\" + String.fromCharCode(c) + "'";
+					throw ('Invalid escape sequence "\\' + String.fromCharCode(c) + '"');
 				} else {
 					if(c == "\\".code) {
 						inEscape = true;
@@ -468,7 +472,7 @@ class TJSONParser {
 		} // End of while loop. We have reached EOF if we are here.
 
 		if(inQuote) {
-			throw "Unexpected end of data. Expected ( " + String.fromCharCode(quoteType) + " )";
+			throw ('Unexpected End of Data. Expected "' + String.fromCharCode(quoteType) + '"');
 		}
 
 		return symbol;
@@ -486,9 +490,10 @@ class TJSONEncoder {
 	var cache:Array<Dynamic>;
 	var uCache:Bool;
 
-	public function new(useCache:Bool = true) {
-		uCache = useCache;
-		if(uCache) cache = new Array<Dynamic>();
+	public function new(?useCache:Bool) {
+		this.uCache = (useCache == null ? true : useCache);
+
+		if(this.uCache) this.cache = new Array<Dynamic>();
 	}
 
 	public function doEncode(obj:Dynamic, ?style:EncodingType) {
@@ -538,16 +543,17 @@ class TJSONEncoder {
 		var cls:Class<Dynamic> = Type.getClass(obj);
 		fields = (cls != null ? Type.getInstanceFields(cls) : Reflect.fields(obj));
 
-		/* Preserve class name when serializing class objects.
-		Is there a way to get `c` outside of a switch? */
+		// Preserve class name when serializing class objects
 		switch(Type.typeof(obj)) {
 			case TClass(c):
 				if(fieldCount++ > 0) buffer.add(style.entrySeperator(depth));
 				else buffer.add(style.firstEntry(depth));
 
+				// Encode the TJSON class prefix first so the parser immediately recognizes it
 				buffer.add('"' + TJSON.HAXE_CLASS_REFERENCE_PREFIX + '"' + style.keyValueSeperator(depth));
 				buffer.add(encodeValue(Type.getClassName(c), style, depth));
 
+				// Run the class's `TJ_noEncode` function, if present
 				if(hasNoEncodeFunc(obj)) {
 					blacklistedFields = obj.TJ_noEncode();
 				}
@@ -555,12 +561,15 @@ class TJSONEncoder {
 			default:
 		}
 
+		// Iterate through all class instance fields and add them to the structure
 		for (field in fields) {
+			// No blacklisted fields
 			if(blacklistedFields != null && blacklistedFields.indexOf(field) >= 0) continue;
 
 			var value:Dynamic = Reflect.field(obj, field);
 			var vStr:String = encodeValue(value, style, depth);
 
+			// Add them as if they were ordinary key-value pairs
 			if(vStr != null) {
 				if(fieldCount++ > 0) buffer.add(style.entrySeperator(depth));
 				else buffer.add(style.firstEntry(depth));
@@ -642,8 +651,8 @@ class TJSONEncoder {
 	private function cacheEncode(value:Dynamic):String {
 		if(!uCache) return null;
 
-		for(c in 0...cache.length){
-			if(cache[c] == value){
+		for(c in 0...cache.length) {
+			if(cache[c] == value) {
 				return '"' + TJSON.OBJECT_REFERENCE_PREFIX + c + '"';
 			}
 		}
@@ -758,9 +767,10 @@ class SimpleStyle implements EncodeStyle {
 
 class FancyStyle implements EncodeStyle {
 	public var tab(default, null):String;
-	public function new(tab:String = "\t") {
-		this.tab = tab;
-		charTimesNCache = [""];
+
+	public function new(?tab:String) {
+		this.tab = (tab == null ? "\t" : tab);
+		this.charTimesNCache = [""];
 	}
 
 	public function beginObject(depth:Int):String {
@@ -786,11 +796,7 @@ class FancyStyle implements EncodeStyle {
 	}
 
 	private var charTimesNCache:Array<String>;
-	private function charTimesN(n:Int):String {
-		return if (n < charTimesNCache.length) {
-			charTimesNCache[n];
-		} else {
-			charTimesNCache[n] = charTimesN(n - 1) + tab;
-		}
+	private inline function charTimesN(n:Int):String {
+		return ((n < charTimesNCache.length) ? charTimesNCache[n] : (charTimesNCache[n] = charTimesN(n - 1) + tab));
 	}
 }
