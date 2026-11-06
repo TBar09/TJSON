@@ -127,9 +127,7 @@ class TestParser extends haxe.unit.TestCase {
 		assertEquals(true, obj.boolValue); // Boolean check
 		assertEquals(false, obj.falseValue); // Boolean check
 
-		#if target.unicode
 		assertEquals("АБВГД абвгд", obj.utf); // Unicode check (Should fail on Neko since it doesn't natively support it)
-		#end
 	}
 
 	/**
@@ -224,17 +222,13 @@ class TestParser extends haxe.unit.TestCase {
 	}
 
 	/**
-	 * Test out parsing of unicode escapes (`\u`). This is skipped on Neko.
+	 * Test out parsing of unicode escapes (`\u`).
 	 */
 	public function testUtf8Chars() {
-		#if target.unicode
 		var s:String = '{"str":"\\u0410\\u0411\\u0412\\u0413\\u0414 \\u0430\\u0431\\u0432\\u0433\\u0434"}';
 		var obj:Dynamic = TJSON.parse(s);
 
 		assertEquals(obj.str, "АБВГД абвгд");
-		#else
-		assertEquals(1, 1);
-		#end
 	}
 
 	/**
@@ -264,6 +258,15 @@ class TestParser extends haxe.unit.TestCase {
     	assertTrue(isOfType(obj.v, Int));
 
 
+		var floatStr:String = "{v: .51, u: 51.}";
+    	var obj:Dynamic = TJSON.parse(floatStr);
+
+    	assertEquals(0.51, obj.v); // Leading dot
+    	assertTrue(isOfType(obj.v, Float));
+		assertEquals(51.0, obj.u); // Trailing dot
+    	assertTrue(isOfType(obj.u, Float));
+
+
     	var intStr:String = '{"v":5000000000}';
     	var obj:Dynamic = TJSON.parse(intStr);
 
@@ -276,6 +279,7 @@ class TestParser extends haxe.unit.TestCase {
 
     	assertEquals(-5000000000.0, obj.v);
     	assertTrue(isOfType(obj.v, Float));
+
 
 		var intStr:String = '{"v": 0xFFa1ff12}';
 		var obj:Dynamic = TJSON.parse(intStr);

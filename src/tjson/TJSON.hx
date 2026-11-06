@@ -86,7 +86,7 @@ class TJSONParser {
 
 		this.lastSymbolQuoted = false;
 
-		this.floatRegex = ~/^[+-]?[0-9]*\.[0-9]+$/;
+		this.floatRegex = ~/^[+-]?[0-9]*\.[0-9]*$/;
 		this.intRegex = ~/^[+-]?[0-9]+$/;
 		this.hexaRegex = ~/^[+-]?(?:0x)[0-9a-f]+$/i; // https://github.com/Sword352/json5hx/blob/main/lib/haxe/json5/Parser.hx#L12
 
@@ -402,7 +402,19 @@ class TJSONParser {
 							}
 						}
 
+						/*
+						 * Not all targets support unicodes, which includes Neko.
+						 * If the target does not automatically support unicodes, then
+						 * we use TJSON's original implementation to get around it.
+						 */
+						#if target.unicode
 						symbol += String.fromCharCode(hexValue);
+						#else
+						var utf = #if neko new neko.Utf8() #else new haxe.Utf8() #end;
+                        utf.addChar(hexValue);
+                        symbol += utf.toString();
+						utf = null;
+						#end
 
 						continue;
 					}
